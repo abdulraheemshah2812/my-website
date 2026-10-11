@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>I Love You</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: manipulation; }
+  canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; }
+  #start { position: fixed; inset: 0; background: #000; color: #ff5a78; display: flex;
+           flex-direction: column; align-items: center; justify-content: center;
+           font: bold 22px system-ui, sans-serif; text-align: center; z-index: 5; }
+  #start small { color: #aa6677; font-weight: normal; font-size: 14px; margin-top: 10px; }
+  #start .h { font-size: 64px; }
+</style>
+</head>
+<body>
+<div id="start"><div class="h">❤</div>Tap karaye shuru karne ke liye meri Gugluu<small>(volume brha laaye hehe)</small></div>
+<canvas id="c"></canvas>
+<script>
+const PHRASES = [
+  "I love you","Ich liebe dich","Te amo","Je t'aime","Ti amo","Σ' αγαπώ","Seni seviyorum",
+  "我爱你","愛してる","사랑해","Я тебя люблю","Jag älskar dig","Ik hou van jou","Kocham cię",
+  "Aku cinta kamu","Anh yêu em","ฉันรักเธอ","मैं तुमसे प्यार करता हूँ","Eu te amo",
+  "میں تم سے محبت کرتا ہوں","أحبك","دوستت دارم","אני אוהב אותך","আমি তোমাকে ভালোবাসি",
+  "ਮੈਂ ਤੈਨੂੰ ਪਿਆਰ ਕਰਦਾ ਹਾਂ","நான் உன்னை காதலிக்கிறேன்","నేను నిన్ను ప్రేమిస్తున్నాను",
+  "म तिमीलाई माया गर्छु","මම ඔබට ආදරෙයි","Saya cintakan awak","Mahal kita","Nakupenda",
+  "Ngiyakuthanda","Ek is lief vir jou","Jeg elsker deg","Jeg elsker dig","Minä rakastan sinua",
+  "Miluji tě","Ľúbim ťa","Szeretlek","Te iubesc","Обичам те","Волим те","Volim te",
+  "Я тебе кохаю","Të dua","Tá grá agam duit","Dw i'n dy garu di","Ég elska þig","Es tevi mīlu",
+  "Aš tave myliu","Ma armastan sind","T'estimo","Aloha au iā 'oe","Aroha ahau ki a koe",
+  "Mi amas vin","მიყვარხარ","Ես քեզ սիրում եմ","Би чамд хайртай","ខ្ញុំស្រលាញ់អ្នក",
+  "Мен сені сүйемін","Seni sevaman","Səni sevirəm","मी तुझ्यावर प्रेम करतो",
+  "હું તને પ્રેમ કરું છું","ഞാൻ നിന്നെ സ്നേഹിക്കുന്നു","ನಾನು ನಿನ್ನನ್ನು ಪ್ರೀತಿಸುತ್ತೇನೆ","Te quiero"
+];
+const PALETTE = [[255,70,90],[255,105,135],[255,140,160],[255,60,60],[255,120,90],[255,170,190]];
+const PINK = [255, 77, 166];     // neon pink
+const MESSAGE = "I Love You meri jaan ❤";
+
+const cv = document.getElementById("c");
+const ctx = cv.getContext("2d");
+let W, H, DPR, scale, cx, cy, items, start, lastDelay, glowCv = null;
+
+
+function shuffled(a) {
+  a = a.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function build() {
+  DPR = window.devicePixelRatio || 1;
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  scale = Math.min(W * 0.37, H * 0.28);
+  cx = W / 2; cy = H * 0.44;
+  const k = scale * 0.075;
+
+ 
+  const N = 720, poly = [];
+  for (let i = 0; i < N; i++) {
+    const t = Math.PI + (i / N) * 2 * Math.PI;
+    const x = 16 * Math.pow(Math.sin(t), 3);
+    const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+    poly.push([cx + x * k, cy - (y + 2.5) * k]);
+  }
+
+
+  const mw = Math.ceil(W), mh = Math.ceil(H);
+  const mk = document.createElement("canvas");
+  mk.width = mw; mk.height = mh;
+  const mc = mk.getContext("2d");
+  mc.fillStyle = "#fff";
+  mc.beginPath();
+  poly.forEach((q, i) => i ? mc.lineTo(q[0], q[1]) : mc.moveTo(q[0], q[1]));
+  mc.closePath(); mc.fill();
+  const md = mc.getImageData(0, 0, mw, mh).data;
+  const inside = (px, py) => {
+    const X = Math.round(px), Y = Math.round(py);
+    if (X < 0 || Y < 0 || X >= mw || Y >= mh) return false;
+    return md[(Y * mw + X) * 4 + 3] > 128;
+  };
+
+
+  const cum = [0];
+  for (let i = 1; i <= N; i++) {
+    const q = poly[i % N], r = poly[i - 1];
+    cum.push(cum[i - 1] + Math.hypot(q[0] - r[0], q[1] - r[1]));
+  }
+  const L = cum[N];
+  const at = s => {
+    let lo = 0, hi = N;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= s) lo = m; else hi = m; }
+    const a = poly[lo], b = poly[(lo + 1) % N];
+    const f = (s - cum[lo]) / ((cum[lo + 1] - cum[lo]) || 1);
+    const p0 = poly[(lo - 4 + N) % N], p1 = poly[(lo + 5) % N];
+    return { x: lerp(a[0], b[0], f), y: lerp(a[1], b[1], f),
+             ang: Math.atan2(p1[1] - p0[1], p1[0] - p0[0]) };
+  };
+
+  const fontOf = f => `bold ${f}px system-ui, "Noto Sans", sans-serif`;
+  const CELL = 40, grid = new Map();
+  const cells = bx => {
+    const out = [];
+    for (let i = Math.floor(bx.x0 / CELL); i <= Math.floor(bx.x1 / CELL); i++)
+      for (let j = Math.floor(bx.y0 / CELL); j <= Math.floor(bx.y1 / CELL); j++) out.push(i * 10007 + j);
+    return out;
+  };
+  const addBox = bx => { for (const c of cells(bx)) { if (!grid.has(c)) grid.set(c, []); grid.get(c).push(bx); } };
+  const free = bx => {
+    for (const c of cells(bx)) {
+      const list = grid.get(c);
+      if (!list) continue;
+      for (const o of list)
+        if (bx.x0 < o.x1 && bx.x1 > o.x0 && bx.y0 < o.y1 && bx.y1 > o.y0) return false;
+    }
+    return true;
+  };
+  const fits = bx => {
+    for (let i = 0; i <= 6; i++)
+      for (let j = 0; j <= 2; j++)
+        if (!inside(lerp(bx.x0, bx.x1, i / 6), lerp(bx.y0, bx.y1, j / 2))) return false;
+    return true;
+  };
+
+  let order = shuffled(PHRASES.map((_, i) => i)), oi = 0;
+  const nextIdx = () => { if (oi >= order.length) { order = shuffled(order); oi = 0; } return order[oi++]; };
+  const pick = () => PINK;
+
+  // ================= PEHLA HISSA: outline pe text =================
+  const OUT_TIME = 7;                         // outline ek circle ki tarah banne ka waqt (seconds)
+  const outline = [];
+  const fo = Math.max(7, scale * 0.058);
+  ctx.font = fontOf(fo);
+  // seedhe (horizontal) words: har row mein left aur right kinare par, taake boundary bane
+  const ys = poly.map(q => q[1]);
+  const yTop = Math.min(...ys), yBot = Math.max(...ys);
+  const rowH = fo * 1.4, hRow = fo * 1.1, padE = fo * 0.25;
+  const wOf = idx => ctx.measureText(PHRASES[idx]).width;
+  // outline par kisi bhi jagah ki position (0 = neeche ki nok, 1 = ek round poora)
+  // path: neeche ki nok -> left side upar -> upar ka dip -> right lobe -> right side neeche -> nok
+  const sweepOf = (xc, y, leftOnly) => {
+    let best = 1e18, bi = 0;
+    const lim = leftOnly ? N / 2 : N;
+    for (let i = 0; i < lim; i++) {
+      const d = (poly[i][0] - xc) ** 2 + (poly[i][1] - y) ** 2;
+      if (d < best) { best = d; bi = i; }
+    }
+    return cum[bi] / L;
+  };
+  const putOut = (idx, xc, y, centerWord) => {
+    const w = wOf(idx);
+    const sweep = sweepOf(xc, y, centerWord);
+    outline.push({ x: xc, y, t: PHRASES[idx], fs: fo, ang: 0, col: pick(), delay: sweep * OUT_TIME, fade: 0.9 });
+    addBox({ x0: xc - w / 2 - padE * 0.6, x1: xc + w / 2 + padE * 0.6, y0: y - hRow / 2, y1: y + hRow / 2 });
+  };
+  for (let y = yBot - fo * 0.8; y >= yTop + fo * 0.8; y -= rowH) {
+    const segs = [];
+    let sa = null;
+    for (let x = 0; x <= W; x += 2) {
+      const ok = inside(x, y - hRow / 2) && inside(x, y) && inside(x, y + hRow / 2);
+      if (ok && sa === null) sa = x;
+      if ((!ok || x + 2 > W) && sa !== null) { segs.push([sa, x]); sa = null; }
+    }
+    for (const [x0, x1] of segs) {
+      const sw = x1 - x0;
+      if (sw < fo * 2.5) continue;
+      let Lw = null, Rw = null;
+      for (let t = 0; t < 14 && (!Lw || !Rw); t++) {
+        const idx = nextIdx(), w = wOf(idx);
+        if (w > sw * 0.5 - padE * 2) continue;
+        if (!Lw) Lw = { idx, w }; else Rw = { idx, w };
+      }
+      if (Lw && Rw) {
+        putOut(Lw.idx, x0 + padE + Lw.w / 2, y);
+        putOut(Rw.idx, x1 - padE - Rw.w / 2, y);
+      } else {
+        for (let t = 0; t < 14; t++) {            // tang jagah (nok): ek hi word beech mein
+          const idx = nextIdx(), w = wOf(idx);
+          if (w <= sw - padE * 2) { putOut(idx, (x0 + x1) / 2, y, true); break; }
+        }
+      }
+    }
+  }
+
+  // ================= DUSRA HISSA: andar random fill =================
+  const base = Math.max(7, scale * 0.062);
+  const levels = [1.9, 1.55, 1.25, 1.0, 0.82, 0.68, 0.56, 0.46];
+  const fill = [];
+  for (const lv of levels) {
+    const fs = base * lv;
+    ctx.font = fontOf(fs);
+    const widths = PHRASES.map(t => ctx.measureText(t).width);
+    const h = fs * 1.1, pad = fs * 0.2;
+    const attempts = 9000 + Math.round(6000 / lv);
+    for (let q = 0; q < attempts; q++) {
+      const idx = nextIdx();
+      const w = widths[idx];
+      const px = cx + (Math.random() * 2.5 - 1.25) * scale;
+      const py = cy + (Math.random() * 2.3 - 1.15) * scale;
+      const bx = { x0: px - w / 2 - pad, x1: px + w / 2 + pad, y0: py - h / 2, y1: py + h / 2 };
+      if (!fits(bx) || !free(bx)) continue;
+      addBox(bx);
+      fill.push({ x: px, y: py, t: PHRASES[idx], fs, ang: 0, col: pick() });
+    }
+  }
+  // bahar se andar ki taraf bharo
+  fill.forEach(it => it.o = -Math.hypot(it.x - cx, it.y - cy) + Math.random() * scale * 0.3);
+  fill.sort((p, q) => p.o - q.o);
+  const step = Math.min(0.07, 9 / Math.max(1, fill.length));
+  const FILL_START = OUT_TIME + 1.8;   // outline poori hone ke baad hi fill shuru
+  fill.forEach((it, i) => { it.delay = FILL_START + i * step; it.fade = 1.3; });
+
+  items = outline.concat(fill);
+  glowCv = null;
+  lastDelay = FILL_START + fill.length * step;
+  start = performance.now();
+}
+
+const lerp = (a, b, t) => a + (b - a) * t;
+
+function makeGlow() {
+  const g = document.createElement("canvas");
+  g.width = cv.width; g.height = cv.height;
+  const c = g.getContext("2d");
+  c.setTransform(DPR, 0, 0, DPR, 0, 0);
+  c.textAlign = "center"; c.textBaseline = "middle";
+  const draw = (blur, col, alpha) => {
+    c.shadowColor = col; c.shadowBlur = blur; c.fillStyle = "rgb(255,120,190)"; c.globalAlpha = alpha;
+    for (const it of items) {
+      c.font = `bold ${it.fs}px system-ui, "Noto Sans", sans-serif`;
+      c.fillText(it.t, it.x, it.y);
+    }
+    c.font = `bold ${Math.max(18, W * 0.055)}px system-ui, sans-serif`;
+    c.fillText(MESSAGE, cx, H * 0.88);
+  };
+  draw(80 * DPR, "#ff1480", 1);   // bohot door tak phailti roshni
+  draw(46 * DPR, "#ff2d95", 1);
+  draw(24 * DPR, "#ff4fb0", 1);
+  draw(10 * DPR, "#ff8ad0", 1);   // paas ki tez chamak
+  draw(3 * DPR,  "#ffd0ec", 1);   // text ke andar ka safed-gulabi core
+  return g;
+}
+
+function frame(now) {
+  const t = (now - start) / 1000;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const it of items) {
+    const p = Math.max(0, Math.min(1, (t - it.delay) / (it.fade || 0.9)));
+    if (p <= 0) continue;
+    const [r, g, b] = it.col;
+    ctx.fillStyle = `rgb(${lerp(25,r,p)|0},${lerp(0,g,p)|0},${lerp(10,b,p)|0})`;
+    ctx.font = `bold ${it.fs}px system-ui, "Noto Sans", sans-serif`;
+    if (it.ang) {
+      ctx.save();
+      ctx.translate(it.x, it.y);
+      ctx.rotate(it.ang);
+      ctx.fillText(it.t, 0, 0);
+      ctx.restore();
+    } else {
+      ctx.fillText(it.t, it.x, it.y);
+    }
+  }
+
+  // neeche ka message bhi usi tarah fade-in hota hai
+  const mp = Math.max(0, Math.min(1, (t - lastDelay - 0.6) / 1.4));
+  if (mp > 0) {
+    ctx.fillStyle = `rgb(${lerp(25,PINK[0],mp)|0},${lerp(0,PINK[1],mp)|0},${lerp(10,PINK[2],mp)|0})`;
+    ctx.font = `bold ${Math.max(18, W * 0.055)}px system-ui, sans-serif`;
+    ctx.fillText(MESSAGE, cx, H * 0.88);
+  }
+
+  // heart poora hone ke baad: poore heart par neon glow
+  const glowStart = lastDelay + 2.0;
+  if (t > glowStart) {
+    const hr = Math.min(1, (t - glowStart) / 2.2);
+    const hp = 0.8 + 0.2 * Math.sin((t - glowStart) * 2.2);
+    const R = scale * 2.1;
+    const gr = ctx.createRadialGradient(cx, cy, scale * 0.2, cx, cy, R);
+    gr.addColorStop(0, "rgba(255,40,140,0.55)");
+    gr.addColorStop(0.45, "rgba(255,30,130,0.22)");
+    gr.addColorStop(1, "rgba(255,30,130,0)");
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = hr * hp;
+    ctx.fillStyle = gr;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+  if (t > glowStart - 0.3 && !glowCv) glowCv = makeGlow();
+  if (glowCv && t > glowStart) {
+    const ramp = Math.min(1, (t - glowStart) / 1.8);
+    const pulse = 0.82 + 0.18 * Math.sin((t - glowStart) * 2.2);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = ramp * pulse;
+    ctx.drawImage(glowCv, 0, 0, W, H);
+    ctx.restore();
+  }
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener("resize", () => {
+  if (Math.abs(window.innerWidth - W) < 30) return;     // address bar ke chhote badlav ignore
+  const el = performance.now() - start;
+  build();
+  start = performance.now() - el;                       // animation wahin se jaari rahe
+});
+build();
+requestAnimationFrame(frame);
+
+// ---------- MUSIC ----------
+// Kati hui clip "music.mp3" naam se isi folder mein rakho, wo loop mein chalegi.
+// File na mili to neeche wali built-in soft melody chalegi.
+let musicStarted = false, synthOn = false;
+
+// In naamon mein se jo bhi file isi folder mein mile, wo chalegi
+const MUSIC_FILES = ["music.mp3", "music.MP3", "Music.mp3", "music.m4a", "music.wav", "music.ogg", "music.aac"];
+
+function startMusic() {
+  if (musicStarted) return;
+  musicStarted = true;
+  let i = 0;
+  const tryNext = () => {
+    if (i >= MUSIC_FILES.length) {
+      synth();
+      return;
+    }
+    const a = new Audio(MUSIC_FILES[i++]);
+    a.preload = "auto"; a.volume = 0.8; a.loop = true;
+    let handled = false;
+    const fail = () => { if (handled) return; handled = true; tryNext(); };
+    a.addEventListener("error", fail, { once: true });
+    const pr = a.play();
+    if (pr && pr.then) {
+      pr.then(() => { window.__musicSrc = a.src; }).catch(err => {
+        if (err && err.name === "NotAllowedError") {
+          document.addEventListener("click", () => a.play().catch(() => {}), { once: true });
+        } else fail();
+      });
+    }
+  };
+  tryNext();
+}
+
+function synth() {
+  if (synthOn) return;
+  synthOn = true;
+  const actx = new (window.AudioContext || window.webkitAudioContext)();
+  const master = actx.createGain();
+  master.gain.value = 0.25;
+  master.connect(actx.destination);
+  const chords = [[261.63,329.63,392.00],[196.00,246.94,293.66],
+                  [220.00,261.63,329.63],[174.61,220.00,261.63]];
+  const beat = 0.45;
+  function note(f, t, d, type, vol) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + d + 0.05);
+  }
+  let nxt = actx.currentTime + 0.1, bar = 0;
+  (function schedule() {
+    while (nxt < actx.currentTime + 2) {
+      const ch = chords[bar % 4];
+      ch.forEach(f => note(f, nxt, beat * 4, "sine", 0.12));
+      [0,1,2,1,0,1,2,1].forEach((idx, i) =>
+        note(ch[idx] * 2, nxt + i * beat / 2, beat, "triangle", 0.1));
+      nxt += beat * 4; bar++;
+    }
+    setTimeout(schedule, 500);
+  })();
+}
+
+document.getElementById("start").addEventListener("click", function () {
+  this.style.display = "none";
+  build();          // animation shuru se
+  startMusic();
+});
+</script>
+</body>
+</html>
